@@ -14,6 +14,7 @@ import tempfile
 import subprocess
 import zipfile
 import waitress
+import requests
 from werkzeug.utils import secure_filename
 from flask import (
     Flask, jsonify, render_template, redirect,
@@ -72,6 +73,8 @@ app.config['JWT_TOKEN_LOCATION'] = ['cookies']
 app.config['JWT_COOKIE_CSRF_PROTECT'] = True
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = False
 
+# PUSHGATEWAY is the full url of the prometheus pushgateway, eg: http://pushgateway.example.org:9091
+PUSHGATEWAY = os.environ.get("PUSHGATEWAY")
 DEV_MODE = 0
 HOST = '*'
 PORT = os.environ['PORT']
@@ -1003,6 +1006,8 @@ def generate_report_endpoint():
 
         report_url = url_for('get_reports_endpoint', project_id=project_id,
                              path='{}/index.html'.format(build_order), _external=True)
+
+        push_metrics(project_id)
     except Exception as ex:
         body = {
             'meta_data': {
@@ -1656,6 +1661,30 @@ def check_process(process_file, project_id):
 
     if proccount > 0:
         raise Exception("Processing files for project_id '{}'. Try later!".format(project_id))
+
+def push_metrics(project_id):
+    if not PUSHGATEWAY:
+        LOGGER.info("PUSHGATEWAY is not enabled. Skipping test metrics")
+        return
+    
+    project_path = get_project_path(project_id)
+    prom_file = os.path.join(project_path, "reports/latest/export/prometheusData.txt")
+    try:
+        with open(prom_file, "r") as f:
+            metrics = f.read()
+    except:
+        LOGGER.warning(f"Could not read prometheus metrics file: {prom_file}")
+        return
+
+    url = f"{PUSHGATEWAY}/metrics/job/{project_id}"
+    
+    try:
+        r = requests.put(url, metrics, timeout=3)
+        r.raise_for_status()
+        LOGGER.info("test metrics pushed to Prometheus")
+    except Exception as err:
+        LOGGER.error(f"Error during prometheus push: {err}")
+        
 
 if __name__ == '__main__':
     if DEV_MODE == 1:
