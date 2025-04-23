@@ -1676,7 +1676,7 @@ def push_metrics(project_id):
         LOGGER.warning(f"Could not read prometheus metrics file: {prom_file}")
         return
 
-    url = f"{PUSHGATEWAY}/metrics/job/{project_id}"
+    url = f"{PUSHGATEWAY}/metrics/job/testreporting/project/{project_id}"
     
     try:
         r = requests.put(url, metrics, timeout=3)
